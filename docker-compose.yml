@@ -62,7 +62,7 @@ services:
       - "9000:9000"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}    
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     command: server /data
     restart: always
     healthcheck:
@@ -79,7 +79,7 @@ services:
     volumes:
       - type: bind
         source: ./rabbitmq.conf
-        target: /etc/rabbitmq/rabbitmq.conf 
+        target: /etc/rabbitmq/rabbitmq.conf
       - amqpdata:/var/lib/rabbitmq
     restart: always
     healthcheck:
@@ -100,7 +100,7 @@ services:
       - "MANAGER__NAME=XTM Integrations Manager"
       - MANAGER__CREDENTIALS_KEY_FILEPATH=/keys/private_key.pem
       - OPENCTI__ENABLE=true
-      - OPENCTI__URL=http://opencti:8080
+      - OPENCTI__URL=http://opencti:8500
       - OPENCTI__TOKEN=${OPENCTI_ADMIN_TOKEN}
       - OPENCTI__DAEMON__SELECTOR=docker
       - OPENCTI__DAEMON__DOCKER__NETWORK_MODE=${COMPOSE_PROJECT_NAME}_default
@@ -119,12 +119,12 @@ services:
   ###########################
   # OPENCTI                 #
   ###########################
-  
+
   opencti:
     image: opencti/platform:6.9.17
     environment:
       - NODE_OPTIONS=--max-old-space-size=8096
-      - APP__PORT=8080
+      - APP__PORT=8500
       - APP__BASE_URL=${OPENCTI_EXTERNAL_SCHEME}://${OPENCTI_HOST}:${OPENCTI_PORT}
       - APP__ADMIN__EMAIL=${OPENCTI_ADMIN_EMAIL}
       - APP__ADMIN__PASSWORD=${OPENCTI_ADMIN_PASSWORD}
@@ -144,12 +144,17 @@ services:
       - RABBITMQ__MANAGEMENT_SSL=false
       - RABBITMQ__USERNAME=${RABBITMQ_DEFAULT_USER}
       - RABBITMQ__PASSWORD=${RABBITMQ_DEFAULT_PASS}
+      # FIX 1: Full SMTP config with TLS support
       - SMTP__HOSTNAME=${SMTP_HOSTNAME}
-      - SMTP__PORT=25
+      - SMTP__PORT=${SMTP_PORT}
+      - SMTP__USE_SSL=false
+      - SMTP__USE_TLS=true
+      - SMTP__USERNAME=${SMTP_USERNAME}
+      - SMTP__PASSWORD=${SMTP_PASSWORD}
       - PROVIDERS__LOCAL__STRATEGY=LocalStrategy
       - APP__HEALTH_ACCESS_KEY=${OPENCTI_HEALTHCHECK_ACCESS_KEY}
     ports:
-      - "${OPENCTI_PORT}:8080"
+      - "${OPENCTI_PORT}:8500"
     depends_on:
       redis:
         condition: service_healthy
@@ -161,14 +166,15 @@ services:
         condition: service_healthy
     restart: always
     healthcheck:
-      test:  ["CMD", "wget", "-qO-", "http://opencti:8080/health?health_access_key=${OPENCTI_HEALTHCHECK_ACCESS_KEY}"]
+      # FIX 2: Healthcheck URL now points to correct port 8500 (was 8080)
+      test: ["CMD", "wget", "-qO-", "http://opencti:8500/health?health_access_key=${OPENCTI_HEALTHCHECK_ACCESS_KEY}"]
       interval: 10s
       timeout: 5s
       retries: 20
   worker:
     image: opencti/worker:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
     depends_on:
       opencti:
@@ -185,7 +191,7 @@ services:
   connector-export-file-stix:
     image: opencti/connector-export-file-stix:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=${CONNECTOR_EXPORT_FILE_STIX_ID} # Valid UUIDv4
       - CONNECTOR_TYPE=INTERNAL_EXPORT_FILE
@@ -198,7 +204,7 @@ services:
   connector-export-file-csv:
     image: opencti/connector-export-file-csv:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=${CONNECTOR_EXPORT_FILE_CSV_ID} # Valid UUIDv4
       - CONNECTOR_TYPE=INTERNAL_EXPORT_FILE
@@ -211,7 +217,7 @@ services:
   connector-export-file-txt:
     image: opencti/connector-export-file-txt:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=${CONNECTOR_EXPORT_FILE_TXT_ID} # Valid UUIDv4
       - CONNECTOR_TYPE=INTERNAL_EXPORT_FILE
@@ -224,7 +230,7 @@ services:
   connector-import-file-stix:
     image: opencti/connector-import-file-stix:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=${CONNECTOR_IMPORT_FILE_STIX_ID} # Valid UUIDv4
       - CONNECTOR_TYPE=INTERNAL_IMPORT_FILE
@@ -239,7 +245,7 @@ services:
   connector-import-document:
     image: opencti/connector-import-document:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=${CONNECTOR_IMPORT_DOCUMENT_ID} # Valid UUIDv4
       - CONNECTOR_TYPE=INTERNAL_IMPORT_FILE
@@ -256,7 +262,7 @@ services:
   connector-import-file-yara:
     image: opencti/connector-import-file-yara:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=${CONNECTOR_IMPORT_FILE_YARA_ID} # Valid UUIDv4
       - CONNECTOR_NAME=ImportFileYARA
@@ -271,7 +277,7 @@ services:
   connector-analysis:
     image: opencti/connector-import-document:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=${CONNECTOR_ANALYSIS_ID} # Valid UUIDv4
       - CONNECTOR_TYPE=INTERNAL_ANALYSIS
@@ -287,14 +293,31 @@ services:
   connector-import-external-reference:
     image: opencti/connector-import-external-reference:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=${CONNECTOR_IMPORT_EXTERNAL_REFERENCE_ID}
       - CONNECTOR_NAME=ImportExternalReference
     restart: always
     depends_on:
       opencti:
-        condition: service_healthy          
+        condition: service_healthy
+
+  connector-alienvault:
+    image: opencti/connector-alienvault:6.9.17
+    environment:
+      - OPENCTI_URL=http://opencti:8500
+      - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
+      - CONNECTOR_ID=${CONNECTOR_ALIENVAULT_ID}  # Valid UUIDv4
+      - CONNECTOR_TYPE=EXTERNAL_IMPORT
+      - CONNECTOR_NAME=AlienVault OTX
+      - CONNECTOR_SCOPE=alienvault
+      - CONNECTOR_LOG_LEVEL=info
+      - ALIENVAULT_API_KEY=${ALIENVAULT_API_KEY}
+      - ALIENVAULT_INTERVAL_SEC=3600
+    restart: always
+    depends_on:
+      opencti:
+        condition: service_healthy
 
   ###########################
   # OPENCTI DEFAULT DATA    #
@@ -303,7 +326,7 @@ services:
   connector-opencti:
     image: opencti/connector-opencti:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=${CONNECTOR_OPENCTI_ID}
       - "CONNECTOR_NAME=OpenCTI Datasets"
@@ -313,19 +336,19 @@ services:
     restart: always
     depends_on:
       opencti:
-        condition: service_healthy      
+        condition: service_healthy
   connector-mitre:
     image: opencti/connector-mitre:6.9.17
     environment:
-      - OPENCTI_URL=http://opencti:8080
+      - OPENCTI_URL=http://opencti:8500
       - OPENCTI_TOKEN=${OPENCTI_ADMIN_TOKEN}
       - CONNECTOR_ID=${CONNECTOR_MITRE_ID}
       - CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT=true
-      - CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT_CONFIDENCE_LEVEL=75      
+      - CONNECTOR_AUTO_CREATE_SERVICE_ACCOUNT_CONFIDENCE_LEVEL=75
     restart: always
     depends_on:
       opencti:
-        condition: service_healthy      
+        condition: service_healthy
 
 volumes:
   esdata:

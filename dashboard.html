@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VulnScan — OpenCTI Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:     #080c10;
+    --panel:  #0d1117;
+    --border: #1a2535;
+    --accent: #00e5ff;
+    --high:   #ff3d5a;
+    --medium: #ffaa00;
+    --low:    #00e676;
+    --text:   #c9d1d9;
+    --dim:    #4a5568;
+    --glow:   0 0 18px rgba(0,229,255,0.18);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 15px;
+    min-height: 100vh;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,0.012) 2px, rgba(0,229,255,0.012) 4px);
+    pointer-events: none; z-index: 999;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 34px; height: 34px;
+    border: 2px solid var(--accent); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Share Tech Mono', monospace;
+    color: var(--accent); font-size: 13px;
+    box-shadow: var(--glow);
+  }
+  .logo-text { font-size: 19px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: #fff; }
+  .logo-text span { color: var(--accent); }
+  .header-right { display: flex; align-items: center; gap: 16px; font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--dim); }
+  .conn-status { display: flex; align-items: center; gap: 6px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .status-dot.connected { background: var(--low); box-shadow: 0 0 8px var(--low); animation: pulse 2s infinite; }
+  .status-dot.error { background: var(--high); box-shadow: 0 0 8px var(--high); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .refresh-btn {
+    padding: 6px 14px; border-radius: 4px;
+    border: 1px solid var(--border); background: transparent;
+    color: var(--accent); font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; cursor: pointer; letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+  .refresh-btn:hover { border-color: var(--accent); box-shadow: var(--glow); }
+  .refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    padding: 0 32px;
+  }
+  .tab {
+    padding: 12px 22px; cursor: pointer;
+    font-family: 'Share Tech Mono', monospace; font-size: 12px;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--dim); border-bottom: 2px solid transparent;
+    transition: all 0.2s; margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── Main ── */
+  main { padding: 28px 32px; max-width: 1400px; margin: 0 auto; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Stats row ── */
+  .stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 18px 22px; position: relative; overflow: hidden;
+    animation: fadeUp 0.5s ease both;
+  }
+  .stat-card::before { content:''; position:absolute; top:0;left:0;right:0; height:2px; }
+  .stat-card.c-accent::before { background: var(--accent); }
+  .stat-card.c-high::before   { background: var(--high); }
+  .stat-card.c-medium::before { background: var(--medium); }
+  .stat-card.c-low::before    { background: var(--low); }
+  .stat-label { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--dim); margin-bottom:6px; font-family:'Share Tech Mono',monospace; }
+  .stat-value { font-size:38px; font-weight:700; line-height:1; color:#fff; }
+  .stat-card.c-accent .stat-value { color: var(--accent); }
+  .stat-card.c-high   .stat-value { color: var(--high); }
+  .stat-card.c-medium .stat-value { color: var(--medium); }
+  .stat-card.c-low    .stat-value { color: var(--low); }
+  .stat-sub { font-size:11px; color:var(--dim); margin-top:4px; font-family:'Share Tech Mono',monospace; }
+
+  /* ── Charts ── */
+  .charts-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-bottom:24px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px;
+    animation: fadeUp 0.5s ease both;
+  }
+  .panel.span2 { grid-column: span 2; }
+  .panel-title {
+    font-size:10px; letter-spacing:2px; text-transform:uppercase;
+    color:var(--dim); margin-bottom:14px;
+    font-family:'Share Tech Mono',monospace;
+    display:flex; align-items:center; gap:8px;
+  }
+  .panel-title::before { content:''; width:3px; height:12px; background:var(--accent); border-radius:2px; }
+  .chart-wrap { position:relative; height:190px; }
+
+  /* ── Table ── */
+  .table-controls { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center; }
+  .filter-btn {
+    padding:5px 14px; border-radius:4px; border:1px solid var(--border);
+    background:transparent; color:var(--dim);
+    font-family:'Share Tech Mono',monospace; font-size:11px;
+    cursor:pointer; transition:all 0.2s; letter-spacing:1px;
+  }
+  .filter-btn:hover,.filter-btn.active { border-color:var(--accent); color:var(--accent); }
+  .filter-btn.fh.active { border-color:var(--high); color:var(--high); }
+  .filter-btn.fm.active { border-color:var(--medium); color:var(--medium); }
+  .search-input {
+    margin-left:auto; padding:5px 12px; border-radius:4px;
+    border:1px solid var(--border); background:transparent;
+    color:var(--text); font-family:'Share Tech Mono',monospace; font-size:11px;
+    outline:none; width:200px;
+  }
+  .search-input:focus { border-color:var(--accent); }
+  table { width:100%; border-collapse:collapse; }
+  thead tr { border-bottom:1px solid var(--border); }
+  th { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--dim); padding:9px 10px; text-align:left; font-family:'Share Tech Mono',monospace; font-weight:400; }
+  tbody tr { border-bottom:1px solid rgba(26,37,53,0.5); transition:background 0.15s; }
+  tbody tr:hover { background:rgba(0,229,255,0.04); }
+  td { padding:10px 10px; font-size:13px; font-family:'Share Tech Mono',monospace; }
+  .risk-badge { display:inline-block; padding:2px 9px; border-radius:3px; font-size:10px; letter-spacing:1px; font-weight:700; }
+  .risk-HIGH   { background:rgba(255,61,90,0.15);  color:var(--high);   border:1px solid rgba(255,61,90,0.3); }
+  .risk-MEDIUM { background:rgba(255,170,0,0.15);  color:var(--medium); border:1px solid rgba(255,170,0,0.3); }
+  .risk-LOW    { background:rgba(0,230,118,0.15);  color:var(--low);    border:1px solid rgba(0,230,118,0.3); }
+  .tag-accent { background:rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.2); color:var(--accent); padding:2px 7px; border-radius:3px; font-size:10px; }
+  .tag-red    { background:rgba(255,61,90,0.08);  border:1px solid rgba(255,61,90,0.2);  color:var(--high);   padding:2px 7px; border-radius:3px; font-size:10px; }
+  .ip-val { color:var(--accent); }
+  .no-data { text-align:center; padding:36px; color:var(--dim); font-family:'Share Tech Mono',monospace; font-size:12px; }
+
+  /* ── Loading overlay ── */
+  .loading-bar {
+    height: 2px; background: var(--border);
+    position: relative; overflow: hidden; border-radius: 1px;
+    margin-bottom: 20px;
+  }
+  .loading-bar::after {
+    content: '';
+    position: absolute; top:0; left:-40%;
+    width: 40%; height: 100%;
+    background: var(--accent);
+    animation: loading 1.2s ease infinite;
+  }
+  @keyframes loading { to { left: 100%; } }
+  .loading-bar.hidden { display: none; }
+
+  /* ── Error banner ── */
+  .error-banner {
+    background: rgba(255,61,90,0.1); border: 1px solid rgba(255,61,90,0.3);
+    border-radius: 6px; padding: 12px 16px; margin-bottom: 20px;
+    color: var(--high); font-family: 'Share Tech Mono', monospace; font-size: 12px;
+    display: none;
+  }
+
+  @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  @media(max-width:900px){ .stats-row{grid-template-columns:1fr 1fr} .charts-row{grid-template-columns:1fr} main{padding:16px} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">VS</div>
+    <div class="logo-text">VULN<span>SCAN</span> <span style="font-size:11px;color:var(--dim);letter-spacing:1px">+ OpenCTI</span></div>
+  </div>
+  <div class="header-right">
+    <div class="conn-status">
+      <div class="status-dot" id="conn-dot"></div>
+      <span id="conn-label">CONNECTING...</span>
+    </div>
+    <span id="last-refresh" style="color:var(--dim)"></span>
+    <button class="refresh-btn" id="refresh-btn" onclick="loadAll()">↻ REFRESH</button>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="vulns">Scan Findings</div>
+  <div class="tab" data-tab="observables">OpenCTI Observables</div>
+  <div class="tab" data-tab="indicators">Indicators</div>
+  <div class="tab" data-tab="reports">Reports</div>
+</div>
+
+<main>
+  <div id="loading-bar" class="loading-bar"></div>
+  <div id="error-banner" class="error-banner"></div>
+
+  <!-- ── TAB: Scan Findings ── -->
+  <div class="tab-content active" id="tab-vulns">
+    <div class="stats-row">
+      <div class="stat-card c-accent"><div class="stat-label">Total Findings</div><div class="stat-value" id="s-total">—</div><div class="stat-sub" id="s-hosts">— hosts</div></div>
+      <div class="stat-card c-high"><div class="stat-label">High Risk</div><div class="stat-value" id="s-high">—</div><div class="stat-sub">Immediate action</div></div>
+      <div class="stat-card c-medium"><div class="stat-label">Medium Risk</div><div class="stat-value" id="s-medium">—</div><div class="stat-sub">Monitor closely</div></div>
+      <div class="stat-card c-low"><div class="stat-label">Low Risk</div><div class="stat-value" id="s-low">—</div><div class="stat-sub">Informational</div></div>
+    </div>
+
+    <div class="charts-row">
+      <div class="panel"><div class="panel-title">Risk Distribution</div><div class="chart-wrap"><canvas id="donut-chart"></canvas></div></div>
+      <div class="panel"><div class="panel-title">Top Services</div><div class="chart-wrap"><canvas id="bar-chart"></canvas></div></div>
+      <div class="panel"><div class="panel-title">MITRE Techniques</div><div class="chart-wrap"><canvas id="mitre-chart"></canvas></div></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:24px">
+      <div class="panel-title">Findings Timeline</div>
+      <div class="chart-wrap" style="height:130px"><canvas id="timeline-chart"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">All Scan Findings</div>
+      <div class="table-controls">
+        <button class="filter-btn active" data-vf="ALL">ALL</button>
+        <button class="filter-btn fh" data-vf="HIGH">HIGH</button>
+        <button class="filter-btn fm" data-vf="MEDIUM">MEDIUM</button>
+        <input class="search-input" id="vuln-search" placeholder="Search IP, CVE, service..."/>
+      </div>
+      <table><thead><tr><th>Timestamp</th><th>IP</th><th>Port</th><th>Service</th><th>Risk</th><th>CVE</th><th>MITRE</th><th>Description</th></tr></thead>
+      <tbody id="vuln-table"><tr><td colspan="8" class="no-data">Loading...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- ── TAB: Observables ── -->
+  <div class="tab-content" id="tab-observables">
+    <div class="stats-row">
+      <div class="stat-card c-accent"><div class="stat-label">Total Observables</div><div class="stat-value" id="obs-total">—</div><div class="stat-sub">from OpenCTI</div></div>
+      <div class="stat-card c-high"><div class="stat-label">IPv4 Addresses</div><div class="stat-value" id="obs-ipv4">—</div><div class="stat-sub">Network indicators</div></div>
+      <div class="stat-card c-medium"><div class="stat-label">Domains</div><div class="stat-value" id="obs-domain">—</div><div class="stat-sub">Domain observables</div></div>
+      <div class="stat-card c-low"><div class="stat-label">Other Types</div><div class="stat-value" id="obs-other">—</div><div class="stat-sub">URLs, hashes, etc.</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">OpenCTI Observables</div>
+      <table><thead><tr><th>ID</th><th>Type</th><th>Value</th><th>Created</th></tr></thead>
+      <tbody id="obs-table"><tr><td colspan="4" class="no-data">Loading from OpenCTI...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- ── TAB: Indicators ── -->
+  <div class="tab-content" id="tab-indicators">
+    <div class="panel">
+      <div class="panel-title">OpenCTI Indicators</div>
+      <table><thead><tr><th>Name</th><th>Pattern</th><th>Confidence</th><th>Revoked</th><th>Created</th></tr></thead>
+      <tbody id="ind-table"><tr><td colspan="5" class="no-data">Loading from OpenCTI...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- ── TAB: Reports ── -->
+  <div class="tab-content" id="tab-reports">
+    <div class="panel">
+      <div class="panel-title">OpenCTI Reports</div>
+      <table><thead><tr><th>Name</th><th>Description</th><th>Confidence</th><th>Created</th></tr></thead>
+      <tbody id="rep-table"><tr><td colspan="4" class="no-data">Loading from OpenCTI...</td></tr></tbody></table>
+    </div>
+  </div>
+
+</main>
+
+<script>
+Chart.defaults.color = '#4a5568';
+Chart.defaults.borderColor = '#1a2535';
+Chart.defaults.font.family = "'Share Tech Mono', monospace";
+
+const API = 'http://localhost:5000/api';
+let charts = {};
+let vulnData = [];
+let activeVF = 'ALL';
+
+// ── Tabs ──────────────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-' + t.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Vuln filters ──────────────────────────────────────────────────
+document.querySelectorAll('[data-vf]').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('[data-vf]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    activeVF = b.dataset.vf;
+    renderVulnTable();
+  });
+});
+document.getElementById('vuln-search').addEventListener('input', renderVulnTable);
+
+// ── Load all data ─────────────────────────────────────────────────
+async function loadAll() {
+  setLoading(true);
+  setConnStatus('connecting');
+  document.getElementById('refresh-btn').disabled = true;
+  clearError();
+
+  try {
+    const [vulns, obs, inds, reps] = await Promise.allSettled([
+      fetch(`${API}/vulns`).then(r => r.json()),
+      fetch(`${API}/observables`).then(r => r.json()),
+      fetch(`${API}/indicators`).then(r => r.json()),
+      fetch(`${API}/reports`).then(r => r.json()),
+    ]);
+
+    if (vulns.status === 'fulfilled') {
+      vulnData = vulns.value;
+      renderVulnStats();
+      renderVulnCharts();
+      renderVulnTable();
+    }
+
+    if (obs.status === 'fulfilled' && !obs.value.error) {
+      renderObservables(obs.value);
+      setConnStatus('connected');
+    } else {
+      const msg = obs.value?.error || 'Could not reach OpenCTI';
+      showError(`OpenCTI: ${msg}`);
+      setConnStatus('error');
+      renderObservables([]);
+    }
+
+    if (inds.status === 'fulfilled' && !inds.value.error) renderIndicators(inds.value);
+    else renderIndicators([]);
+
+    if (reps.status === 'fulfilled' && !reps.value.error) renderReports(reps.value);
+    else renderReports([]);
+
+    document.getElementById('last-refresh').textContent =
+      'UPDATED ' + new Date().toLocaleTimeString();
+
+  } catch (e) {
+    showError('Cannot reach server.py — is it running? (python server.py)');
+    setConnStatus('error');
+  }
+
+  setLoading(false);
+  document.getElementById('refresh-btn').disabled = false;
+}
+
+// ── Vuln Findings ─────────────────────────────────────────────────
+function renderVulnStats() {
+  const total  = vulnData.length;
+  const high   = vulnData.filter(d => d.risk === 'HIGH').length;
+  const medium = vulnData.filter(d => d.risk === 'MEDIUM').length;
+  const low    = vulnData.filter(d => d.risk === 'LOW').length;
+  const hosts  = new Set(vulnData.map(d => d.ip)).size;
+
+  anim('s-total',  total);
+  anim('s-high',   high);
+  anim('s-medium', medium);
+  anim('s-low',    low);
+  document.getElementById('s-hosts').textContent = `${hosts} unique host${hosts !== 1 ? 's' : ''}`;
+}
+
+function renderVulnCharts() {
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+
+  const high   = vulnData.filter(d => d.risk === 'HIGH').length;
+  const medium = vulnData.filter(d => d.risk === 'MEDIUM').length;
+  const low    = vulnData.filter(d => d.risk === 'LOW').length;
+
+  charts.donut = new Chart(document.getElementById('donut-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['HIGH','MEDIUM','LOW'],
+      datasets: [{ data:[high,medium,low],
+        backgroundColor:['rgba(255,61,90,0.8)','rgba(255,170,0,0.8)','rgba(0,230,118,0.8)'],
+        borderColor:['#ff3d5a','#ffaa00','#00e676'], borderWidth:1, hoverOffset:6 }]
+    },
+    options: { cutout:'68%', plugins:{ legend:{ position:'bottom', labels:{ padding:14, boxWidth:10 } } }, animation:{ duration:700 } }
+  });
+
+  const svcCounts = {};
+  vulnData.forEach(d => { svcCounts[d.service] = (svcCounts[d.service]||0)+1; });
+  const svcE = Object.entries(svcCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+
+  charts.bar = new Chart(document.getElementById('bar-chart'), {
+    type:'bar',
+    data:{ labels:svcE.map(e=>e[0]), datasets:[{ data:svcE.map(e=>e[1]),
+      backgroundColor:'rgba(0,229,255,0.2)', borderColor:'#00e5ff', borderWidth:1, borderRadius:3 }] },
+    options:{ indexAxis:'y', plugins:{legend:{display:false}},
+      scales:{ x:{grid:{color:'#1a2535'},ticks:{stepSize:1}}, y:{grid:{display:false}} }, animation:{duration:600} }
+  });
+
+  const mitreCounts = {};
+  vulnData.forEach(d => { mitreCounts[d.mitre]=(mitreCounts[d.mitre]||0)+1; });
+  const mitreE = Object.entries(mitreCounts).sort((a,b)=>b[1]-a[1]);
+
+  charts.mitre = new Chart(document.getElementById('mitre-chart'), {
+    type:'bar',
+    data:{ labels:mitreE.map(e=>e[0]), datasets:[{ data:mitreE.map(e=>e[1]),
+      backgroundColor:'rgba(255,170,0,0.2)', borderColor:'#ffaa00', borderWidth:1, borderRadius:3 }] },
+    options:{ indexAxis:'y', plugins:{legend:{display:false}},
+      scales:{ x:{grid:{color:'#1a2535'},ticks:{stepSize:1}}, y:{grid:{display:false}} }, animation:{duration:600} }
+  });
+
+  const timeBuckets = {};
+  vulnData.forEach(d => { const k=d.timestamp.slice(0,16); timeBuckets[k]=(timeBuckets[k]||0)+1; });
+  const timeKeys = Object.keys(timeBuckets).sort();
+
+  charts.timeline = new Chart(document.getElementById('timeline-chart'), {
+    type:'line',
+    data:{ labels:timeKeys, datasets:[{ data:timeKeys.map(k=>timeBuckets[k]),
+      borderColor:'#00e5ff', backgroundColor:'rgba(0,229,255,0.07)',
+      borderWidth:2, pointBackgroundColor:'#00e5ff', pointRadius:3, fill:true, tension:0.3 }] },
+    options:{ plugins:{legend:{display:false}},
+      scales:{ x:{grid:{color:'#1a2535'},ticks:{maxTicksLimit:8,maxRotation:30}},
+               y:{grid:{color:'#1a2535'},ticks:{stepSize:1}} }, animation:{duration:600} }
+  });
+}
+
+function renderVulnTable() {
+  const search = document.getElementById('vuln-search').value.toLowerCase();
+  let data = activeVF === 'ALL' ? vulnData : vulnData.filter(d => d.risk === activeVF);
+  if (search) data = data.filter(d =>
+    (d.ip+d.port+d.service+d.cve+d.description+d.mitre).toLowerCase().includes(search));
+
+  const tbody = document.getElementById('vuln-table');
+  if (!data.length) { tbody.innerHTML = `<tr><td colspan="8" class="no-data">No findings match</td></tr>`; return; }
+
+  tbody.innerHTML = data.map(d => `
+    <tr>
+      <td>${d.timestamp}</td>
+      <td class="ip-val">${d.ip}</td>
+      <td>${d.port}</td>
+      <td>${d.service}</td>
+      <td><span class="risk-badge risk-${d.risk}">${d.risk}</span></td>
+      <td>${d.cve !== 'N/A' ? `<span class="tag-red">${d.cve}</span>` : `<span style="color:var(--dim)">N/A</span>`}</td>
+      <td><span class="tag-accent">${d.mitre}</span></td>
+      <td style="color:var(--dim);font-size:12px">${d.description}</td>
+    </tr>`).join('');
+}
+
+// ── Observables ───────────────────────────────────────────────────
+function renderObservables(data) {
+  const ipv4   = data.filter(d => d.type === 'IPv4-Addr').length;
+  const domain = data.filter(d => d.type === 'Domain-Name').length;
+  const other  = data.length - ipv4 - domain;
+
+  anim('obs-total',  data.length);
+  anim('obs-ipv4',   ipv4);
+  anim('obs-domain', domain);
+  anim('obs-other',  other);
+
+  const tbody = document.getElementById('obs-table');
+  if (!data.length) { tbody.innerHTML = `<tr><td colspan="4" class="no-data">No observables found in OpenCTI</td></tr>`; return; }
+  tbody.innerHTML = data.map(d => `
+    <tr>
+      <td style="color:var(--dim);font-size:11px">${d.id.slice(0,20)}...</td>
+      <td><span class="tag-accent">${d.type}</span></td>
+      <td class="ip-val">${d.value}</td>
+      <td>${d.created_at ? new Date(d.created_at).toLocaleString() : '—'}</td>
+    </tr>`).join('');
+}
+
+// ── Indicators ────────────────────────────────────────────────────
+function renderIndicators(data) {
+  const tbody = document.getElementById('ind-table');
+  if (!data.length) { tbody.innerHTML = `<tr><td colspan="5" class="no-data">No indicators found in OpenCTI</td></tr>`; return; }
+  tbody.innerHTML = data.map(d => `
+    <tr>
+      <td>${d.name}</td>
+      <td style="font-size:11px;color:var(--dim);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.pattern||'—'}</td>
+      <td><span style="color:${d.confidence>70?'var(--low)':d.confidence>40?'var(--medium)':'var(--high)'}">${d.confidence??'—'}</span></td>
+      <td>${d.revoked ? `<span style="color:var(--high)">YES</span>` : `<span style="color:var(--low)">NO</span>`}</td>
+      <td>${d.created_at ? new Date(d.created_at).toLocaleString() : '—'}</td>
+    </tr>`).join('');
+}
+
+// ── Reports ───────────────────────────────────────────────────────
+function renderReports(data) {
+  const tbody = document.getElementById('rep-table');
+  if (!data.length) { tbody.innerHTML = `<tr><td colspan="4" class="no-data">No reports found in OpenCTI</td></tr>`; return; }
+  tbody.innerHTML = data.map(d => `
+    <tr>
+      <td style="color:var(--accent)">${d.name}</td>
+      <td style="color:var(--dim);font-size:12px">${d.description||'—'}</td>
+      <td>${d.confidence??'—'}</td>
+      <td>${d.created_at ? new Date(d.created_at).toLocaleString() : '—'}</td>
+    </tr>`).join('');
+}
+
+// ── UI helpers ────────────────────────────────────────────────────
+function setLoading(on) { document.getElementById('loading-bar').classList.toggle('hidden', !on); }
+function clearError()   { const e = document.getElementById('error-banner'); e.style.display='none'; e.textContent=''; }
+function showError(msg) { const e = document.getElementById('error-banner'); e.style.display='block'; e.textContent='⚠ ' + msg; }
+
+function setConnStatus(s) {
+  const dot   = document.getElementById('conn-dot');
+  const label = document.getElementById('conn-label');
+  dot.className = 'status-dot ' + s;
+  label.textContent = s === 'connected' ? 'OPENCTI CONNECTED' : s === 'error' ? 'OPENCTI OFFLINE' : 'CONNECTING...';
+}
+
+function anim(id, target) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  let cur = 0;
+  const step = Math.ceil(target / 20) || 1;
+  const t = setInterval(() => { cur = Math.min(cur+step, target); el.textContent = cur; if(cur>=target) clearInterval(t); }, 40);
+}
+
+// ── Boot ──────────────────────────────────────────────────────────
+loadAll();
+setInterval(loadAll, 60000); // auto-refresh every 60s
+</script>
+</body>
+</html>
